@@ -1,8 +1,11 @@
 use std::io::Write;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
+use std::string::ToString;
+use std::time::Duration;
 use llama_cpp_2::context::LlamaContext;
 use llama_cpp_2::context::params::LlamaContextParams;
+use llama_cpp_2::ggml_time_us;
 use llama_cpp_2::llama_backend::LlamaBackend;
 use llama_cpp_2::llama_batch::LlamaBatch;
 use llama_cpp_2::model::{AddBos, LlamaChatMessage, LlamaModel, Special};
@@ -25,7 +28,7 @@ impl ModelContainer {
         let mut backend = LlamaBackend::init().unwrap();
         backend.void_logs();
 
-        let model_params  = LlamaModelParams::default();
+        let model_params  = LlamaModelParams::default().with_n_gpu_layers(5000);
         let model =
             LlamaModel::load_from_file(&backend, PathBuf::from(model_path), &model_params).unwrap();
 
@@ -41,18 +44,40 @@ pub struct ChatWrapper {
     chat: Vec<LlamaChatMessage>
 }
 
+pub enum ChatRole {
+    System,
+    User,
+    Assistant
+}
+
+impl ChatRole {
+
+    fn value(&self) -> String {
+        match *self {
+            ChatRole::System => "system".to_string(),
+            ChatRole::User => "user".to_string(),
+            ChatRole::Assistant => "assistant".to_string()
+        }
+    }
+
+}
+
 impl ChatWrapper {
     pub fn new() -> Self {
         ChatWrapper { chat: vec![] }
     }
 
-    pub fn add_dialogue(&mut self, role: String, content: String) {
-        self.chat.push(LlamaChatMessage::new(role, content).unwrap());
+    pub fn add_dialogue(&mut self, role: ChatRole, content: String) {
+        self.chat.push(LlamaChatMessage::new(role.value(), content).unwrap());
     }
 
     pub fn to_tokens(&self, ctx: &LlamaContext) -> Vec<LlamaToken> {
         let prompt = ctx.model.apply_chat_template(None, self.chat.clone(), true).unwrap();
         ctx.model.str_to_token(&prompt, AddBos::Always).unwrap()
+    }
+
+    pub fn clear(&mut self) {
+        self.chat = vec![];
     }
 
 }
@@ -80,6 +105,8 @@ impl <'a>ModelInstance<'a> {
             ctx_params = ctx_params.with_n_threads_batch(threads_batch);
         }
 
+        ctx_params = ctx_params.with_flash_attention(true);
+
         let ctx = model_storage.model.new_context(&model_storage.backend, ctx_params).unwrap(); // current utils
         ModelInstance {
             ctx_window,
@@ -99,6 +126,7 @@ impl <'a>ModelInstance<'a> {
         threads_batch: Option<i32>,
         ctx_window: u32,
         session_path: String) -> Self {
+        println!("Loading in session...");
         let mut model_instance = ModelInstance::new(model_storage, threads, threads_batch, ctx_window);
         let past_tokens = model_instance.ctx.load_session_file(session_path, ctx_window as usize).expect("panik!");
         past_tokens.iter().for_each(|x| model_instance.tokens.push(x.clone()));
@@ -109,8 +137,9 @@ impl <'a>ModelInstance<'a> {
     pub fn save_curr_session(&self, dest: Option<String>) -> Result<(), SaveInstanceError> {
         let path = if let Some(path) = dest { path } else { "session.bin".to_string() };
 
+        println!("Saving current session...");
         match self.ctx.save_session_file(path, self.tokens.as_slice()) {
-            Err(e) => Err(SaveInstanceError),
+            Err(_e) => Err(SaveInstanceError),
             _ => Ok(())
         }
     }
@@ -119,7 +148,7 @@ impl <'a>ModelInstance<'a> {
         tokens.iter().for_each(|x| self.tokens.push(*x));
     }
 
-    fn decode_tokens(&self, tokens: Vec<LlamaToken>) -> String {
+    pub fn decode_tokens(&self, tokens: Vec<LlamaToken>, output_buff: bool) -> String {
         let mut decoded: String = "".to_owned();
         let mut decoder = encoding_rs::UTF_8.new_decoder();
 
@@ -131,50 +160,55 @@ impl <'a>ModelInstance<'a> {
 
             decoded.push_str(output_string.as_str());
 
+            if output_buff {
+                print!("{}", output_string);
+            }
             std::io::stdout().flush().unwrap(); // flush to stdout
         }
 
         decoded
     }
-    pub fn init_sys(&mut self, content: String, max_gen: i32, output: bool) -> Option<Vec<LlamaToken>> {
+    pub fn init_sys(&mut self, content: String, max_gen: i32, output: bool, yield_output: bool) -> Option<Vec<LlamaToken>> {
         let mut chat: Vec<LlamaChatMessage> = vec![];
         chat.push(LlamaChatMessage::new("system".to_string(), content).unwrap());
 
         if output {
-            self.print_inference(self.create_chat_dialogue(chat), max_gen);
+            self.print_after_inference(self.create_chat_dialogue(chat), max_gen, yield_output);
             None
         } else {
-            Some(self.inference(self.create_chat_dialogue(chat), max_gen))
+            Some(self.inference(self.create_chat_dialogue(chat), max_gen, false))
         }
     }
 
-    pub fn user_query(&mut self, content: String, max_gen: i32, output: bool) -> Option<Vec<LlamaToken>> {
+    pub fn user_query(&mut self, content: String, max_gen: i32, output: bool, yield_output: bool) -> Option<Vec<LlamaToken>> {
         let mut chat: Vec<LlamaChatMessage> = vec![];
         chat.push(LlamaChatMessage::new("user".to_string(), content).unwrap());
 
         if output {
-            self.print_inference(self.create_chat_dialogue(chat), max_gen);
+            self.print_after_inference(self.create_chat_dialogue(chat), max_gen, yield_output);
             None
         } else {
-            Some(self.inference(self.create_chat_dialogue(chat), max_gen))
+            Some(self.inference(self.create_chat_dialogue(chat), max_gen, false))
         }
     }
 
-    pub fn chat_query(&mut self, chat: ChatWrapper, max_gen: i32, output: bool) -> Option<Vec<LlamaToken>> {
+    pub fn chat_query(&mut self, chat: &ChatWrapper, max_gen: i32, output: bool, yield_output: bool) -> Option<Vec<LlamaToken>> {
         if output {
-            self.print_inference(chat.to_tokens(&self.ctx), max_gen);
+            self.print_after_inference(chat.to_tokens(&self.ctx), max_gen, yield_output);
             None
         } else {
-            Some(self.inference(chat.to_tokens(&self.ctx), max_gen))
+            Some(self.inference(chat.to_tokens(&self.ctx), max_gen, false))
         }
     }
 
-    pub fn print_inference(&mut self, query: Vec<LlamaToken>, max_gen: i32) {
-        let result = self.inference(query, max_gen);
-        println!("{}", self.decode_tokens(result));
+    pub fn print_after_inference(&mut self, query: Vec<LlamaToken>, max_gen: i32, yield_output: bool) {
+        let result = self.inference(query, max_gen, yield_output);
+        if !yield_output {
+            println!("{}", self.decode_tokens(result, false));
+        }
     }
 
-    pub fn inference(&mut self, query: Vec<LlamaToken>, max_gen: i32) -> Vec<LlamaToken> {
+    pub fn inference(&mut self, query: Vec<LlamaToken>, max_gen: i32, output: bool) -> Vec<LlamaToken> {
         let mut result: Vec<LlamaToken> = vec![];
         self.stream_tokens(&query);
 
@@ -192,8 +226,8 @@ impl <'a>ModelInstance<'a> {
 
         let mut n_cur = batch.n_tokens();
 
-        let sample = LlamaSampler::new(LlamaSamplerChainParams::default()).unwrap();
-        let mut sampler = LlamaSampler::add_greedy(sample);
+        let mut sampler = LlamaSampler::new(LlamaSamplerChainParams::default()).unwrap();
+        sampler = LlamaSampler::add_greedy(sampler);
 
         while n_cur <= max_gen {
             let token = sampler.sample(&self.ctx, batch.n_tokens() - 1); // get next token
@@ -207,7 +241,18 @@ impl <'a>ModelInstance<'a> {
 
             self.ctx.decode(&mut batch).unwrap();
 
+            if output {
+                self.decode_tokens(vec![token], true);
+            }
+
             n_cur += 1;
+        }
+
+        // self.ctx.kv_cache_update();
+        // self.ctx.clear_kv_cache_seq(None, Some(200), None).unwrap();
+
+        if output {
+            println!();
         }
 
         result
