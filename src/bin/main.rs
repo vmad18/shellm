@@ -1,7 +1,7 @@
 use std::io;
 use std::io::Write;
-use llama_cpp_2::max_devices;
 use shell_rs::utils::model_tool::{ModelInstance, ModelContainer, ChatWrapper, ChatRole};
+use shell_rs::utils::utils::get_sys_threads;
 
 fn test_one() {
     let model = ModelContainer::new("/home/v18/Documents/Code/shell_rs2/qwen2.5-coder-7b-instruct-q4_k_m.gguf".to_string());
@@ -36,7 +36,9 @@ fn test_three() {
 }
 
 fn main() {
-    let model = ModelContainer::new("/home/v18/Documents/Code/shell_rs2/qwen2.5-coder-7b-instruct-q4_k_m.gguf".to_string());
+
+    println!("{}", get_sys_threads());
+    /*    let model = ModelContainer::new("/home/v18/Documents/Code/shell_rs2/qwen2.5-coder-7b-instruct-q4_k_m.gguf".to_string());
     let mut instance = ModelInstance::new(&model, Some(12),  None, 10000);
     let mut chat = ChatWrapper::new();
     chat.add_dialogue(ChatRole::System, "You are a highly capable and adaptive mathematics assistant designed to help users solve math-based problems effectively. Your primary goal is to provide clear, accurate, and concise solutions while fostering understanding of the underlying concepts. Approach every problem with a focus on clarity and precision, breaking down solutions into logical, easy-to-follow steps tailored to the user's level of expertise. Always verify your calculations and ensure your explanations are thorough yet accessible. Encourage users to ask follow-up questions, explore alternative methods, and deepen their understanding of the subject. Whether the problem involves basic arithmetic, advanced calculus, or abstract mathematical theory, provide guidance that is both technically correct and intuitively understandable, aiming to empower users to solve problems confidently on their own. Address the user by the name they provide. KEEP ANSWERS CONCISE AND BRIEF.".to_string());
@@ -54,6 +56,6 @@ fn main() {
         println!();
         println!();
         chat.clear();
-    }
+    }*/
     test_three();
 }

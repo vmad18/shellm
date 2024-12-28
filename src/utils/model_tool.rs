@@ -2,10 +2,9 @@ use std::io::Write;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::string::ToString;
-use std::time::Duration;
+
 use llama_cpp_2::context::LlamaContext;
 use llama_cpp_2::context::params::LlamaContextParams;
-use llama_cpp_2::ggml_time_us;
 use llama_cpp_2::llama_backend::LlamaBackend;
 use llama_cpp_2::llama_batch::LlamaBatch;
 use llama_cpp_2::model::{AddBos, LlamaChatMessage, LlamaModel, Special};
@@ -16,6 +15,9 @@ use llama_cpp_2::token::LlamaToken;
 
 #[derive(Debug)]
 pub struct SaveInstanceError;
+
+#[derive(Debug)]
+pub struct LoadInstanceError;
 
 pub struct ModelContainer {
     model: LlamaModel,
@@ -89,7 +91,7 @@ pub struct ModelInstance<'a> {
 }
 
 impl <'a>ModelInstance<'a> {
-    pub fn new(model_storage: &'a ModelContainer,
+    pub fn new(container: &'a ModelContainer,
                threads: Option<i32>,
                threads_batch: Option<i32>,
                ctx_window: u32) -> Self {
@@ -107,7 +109,7 @@ impl <'a>ModelInstance<'a> {
 
         ctx_params = ctx_params.with_flash_attention(true);
 
-        let ctx = model_storage.model.new_context(&model_storage.backend, ctx_params).unwrap(); // current utils
+        let ctx = container.model.new_context(&container.backend, ctx_params).unwrap(); // current utils
         ModelInstance {
             ctx_window,
             ctx,
@@ -125,18 +127,20 @@ impl <'a>ModelInstance<'a> {
         threads: Option<i32>,
         threads_batch: Option<i32>,
         ctx_window: u32,
-        session_path: String) -> Self {
-        println!("Loading in session...");
+        session_path: String) -> Result<Self, LoadInstanceError> {
+        println!("Loading session...");
         let mut model_instance = ModelInstance::new(model_storage, threads, threads_batch, ctx_window);
-        let past_tokens = model_instance.ctx.load_session_file(session_path, ctx_window as usize).expect("panik!");
-        past_tokens.iter().for_each(|x| model_instance.tokens.push(x.clone()));
+        let past_tokens = match model_instance.ctx.load_session_file(session_path, ctx_window as usize) {
+            Ok(toks) => toks,
+            Err(_e) => { return Err(LoadInstanceError); }
+        };
 
-        model_instance
+        past_tokens.iter().for_each(|x| model_instance.tokens.push(x.clone()));
+        Ok(model_instance)
     }
 
     pub fn save_curr_session(&self, dest: Option<String>) -> Result<(), SaveInstanceError> {
         let path = if let Some(path) = dest { path } else { "session.bin".to_string() };
-
         println!("Saving current session...");
         match self.ctx.save_session_file(path, self.tokens.as_slice()) {
             Err(_e) => Err(SaveInstanceError),
@@ -214,7 +218,7 @@ impl <'a>ModelInstance<'a> {
 
         let mut batch = LlamaBatch::new(self.ctx_window as usize, 1); // [S, B]
 
-        let mut tokens: &Vec<LlamaToken> = &self.tokens;
+        let tokens: &Vec<LlamaToken> = &self.tokens;
 
         let last_index: i32 = (tokens.len() - 1) as i32;
         for (i, token) in (0_i32..).zip(tokens.into_iter()) {
