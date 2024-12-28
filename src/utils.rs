@@ -37,6 +37,10 @@ pub mod color {
         )
     }
 
+    pub fn colorify(content: &str, r: f32, g: f32, b: f32) -> String {
+        format!("{}{}{}", rgb_to_ansi(r / 255., g / 255., b / 255.), content, RESET_COLOR)
+    }
+
     pub fn color_gradient_text(content: &String, offset: f32) -> String {
         let mut result = String::new();
         let length = content.len() as f32;
@@ -51,23 +55,22 @@ pub mod color {
         format!("{}{}", RESET_COLOR, result)
     }
 
-    pub fn animate_text<F>(content: String, speed: f32, cond: F)
+    pub fn animate_text<F>(content: &str, speed: f32, cond: F)
         where F: Fn() -> bool
     {
         let mut offset: f32 = 0.0;
-        let stdout = std::io::stdout();
-        let mut handle = stdout.lock();
-        write!(handle, "{}", HIDE_CURSOR).unwrap();
+        write!( std::io::stdout(), "{}", HIDE_CURSOR).unwrap();
 
         while cond() {
-            write!(handle, "{}{}", CLEAR_LINE, color_gradient_text(&content, offset)).expect("panik!");
-            handle.flush().expect("panik2");
+            write!(std::io::stdout(), "{}{}", CLEAR_LINE, color_gradient_text(&content.to_string(), offset)).expect("panik!");
+            std::io::stdout().flush().expect("panik2");
 
             offset = (speed + offset) % 1.0;
 
             sleep(Duration::from_millis(50));
         }
 
+        let mut handle = std::io::stdout().lock();
         write!(handle, "{}{}{}", CLEAR_LINE, RESET_COLOR, SHOW_CURSOR).unwrap();
     }
 

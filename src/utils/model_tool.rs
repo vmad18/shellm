@@ -26,7 +26,7 @@ pub struct ModelContainer {
 
 impl ModelContainer {
 
-    pub fn new(model_path: String) -> Self {
+    pub fn new(model_path: &str) -> Self {
         let mut backend = LlamaBackend::init().unwrap();
         backend.void_logs();
 
@@ -69,8 +69,8 @@ impl ChatWrapper {
         ChatWrapper { chat: vec![] }
     }
 
-    pub fn add_dialogue(&mut self, role: ChatRole, content: String) {
-        self.chat.push(LlamaChatMessage::new(role.value(), content).unwrap());
+    pub fn add_dialogue(&mut self, role: ChatRole, content: &str) {
+        self.chat.push(LlamaChatMessage::new(role.value(), content.to_string()).unwrap());
     }
 
     pub fn to_tokens(&self, ctx: &LlamaContext) -> Vec<LlamaToken> {
@@ -80,6 +80,10 @@ impl ChatWrapper {
 
     pub fn clear(&mut self) {
         self.chat = vec![];
+    }
+
+    pub fn len(&self) -> usize {
+        self.chat.len()
     }
 
 }
