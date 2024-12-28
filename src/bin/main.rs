@@ -1,6 +1,10 @@
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::thread::sleep;
+use std::time::Duration;
 use shell_rs::utils::color::{animate_text};
 use shell_rs::utils::model_tool::{ChatRole, ChatWrapper, ModelContainer, ModelInstance};
-use shell_rs::utils::utils::get_sys_threads;
+use shell_rs::shell::shell_tools::{ModelStatus, ShellLM};
 
 fn test_one() {
     let model = ModelContainer::new("/home/v18/Documents/Code/shell_rs2/qwen2.5-coder-7b-instruct-q4_k_m.gguf".to_string());
@@ -36,11 +40,23 @@ fn test_three() {
 
 fn main() {
 
-    animate_text("██████████████████████████████████████████████████████████".to_string(), -0.009);
+    // animate_text("█████████████████████████████████████████████████████████████████████████████████████".to_string(), -0.009);
+/*    let handle = thread::spawn(|| { animate_text("running magik".to_string(), -0.009, ||{ true }); } );
+    handle.join().expect("thread did not end properly");*/
 
-/*    println!("{}", get_sys_threads());
-    let colored_text = rgb_to_ansi(1.0, 0.0, 0.5); // bright purple
-    println!("{}Hello World{}", colored_text, "\x1b[0m"); // with reset code at the end*/
+    let model_status = ModelStatus(true);
+    let state = Arc::new(Mutex::new(model_status));
+    ShellLM::loading_text(Arc::clone(&state));
+
+    sleep(Duration::from_millis(5000));
+    state.lock().unwrap().0 = false;
+    println!("done!");
+
+
+
+    /*    println!("{}", get_sys_threads());
+        let colored_text = rgb_to_ansi(1.0, 0.0, 0.5); // bright purple
+        println!("{}Hello World{}", colored_text, "\x1b[0m"); // with reset code at the end*/
 
 
     /*    let model = ModelContainer::new("/home/v18/Documents/Code/shell_rs2/qwen2.5-coder-7b-instruct-q4_k_m.gguf".to_string());

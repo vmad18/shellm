@@ -1,3 +1,6 @@
+use std::sync::{Arc, Mutex};
+use std::thread;
+use crate::utils::color::animate_text;
 use crate::utils::model_tool::{ChatRole, ChatWrapper, ModelContainer, ModelInstance};
 use crate::utils::utils::get_sys_threads;
 
@@ -19,6 +22,8 @@ impl ModelMode {
 
 }
 
+pub struct ModelStatus(pub bool);
+
 pub struct ShellCreationError;
 
 pub struct ShellLM<'a> {
@@ -31,7 +36,6 @@ pub struct ShellLM<'a> {
 }
 
 impl <'a> ShellLM<'a> {
-
     pub fn new(query: Option<String>,
                model_mode: ModelMode,
                shell_mode: bool,
@@ -40,7 +44,6 @@ impl <'a> ShellLM<'a> {
                program_out_file: Option<String>,
                container: &'a ModelContainer,
                ctx_window: u32) -> Result<Self, ShellCreationError> {
-        // let container = ModelContainer::new(model_path);
         let threads = Some((get_sys_threads() / 2) as i32);
         let instance =
             if let Some(load_path) = load_session
@@ -81,6 +84,14 @@ impl <'a> ShellLM<'a> {
     // pub fn get_wd(&self) -> String {
     //
     // }
+
+    pub fn loading_text(model_status: Arc<Mutex<ModelStatus>>) {
+        thread::spawn(move || {
+                                animate_text("running magik".to_string(), -0.009, || {
+                                    let model_status_lock = model_status.lock().unwrap();
+                                    model_status_lock.0
+                                }) });
+    }
 
     pub fn run_shell(&self) {
         loop {

@@ -1,2 +1,2 @@
 pub mod utils;
-mod shell;
+pub mod shell;

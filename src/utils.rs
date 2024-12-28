@@ -7,6 +7,8 @@ pub mod color {
 
     const CLEAR_LINE: &str = "\x1b[2K\x1b[G";
     const RESET_COLOR: &str = "\x1b[0m";
+    const HIDE_CURSOR: &str = "\x1b[?25l";
+    const SHOW_CURSOR: &str = "\x1b[?25h";
     fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (f32, f32, f32) {
         let h = h - h.floor();
 
@@ -40,24 +42,24 @@ pub mod color {
         let length = content.len() as f32;
 
         for (i, c) in content.chars().enumerate() {
-            let hue = (i as f32 / (5.0 * length) + offset) % 1.0;
+            let hue = (i as f32 / (2.5 * length) + offset) % 1.0;
             let (r, g, b) = hsv_to_rgb(hue, 1.0, 1.0);
             result.push_str(&rgb_to_ansi(r, g, b));
             result.push(c);
-            // let colored = format!("{}{}", rgb_to_ansi(r, g, b), c);
-            // result.push_str(colored.as_str());
         }
 
-        result.push_str(RESET_COLOR);
-        result
+        format!("{}{}", RESET_COLOR, result)
     }
 
-    pub fn animate_text(content: String, speed: f32) {
+    pub fn animate_text<F>(content: String, speed: f32, cond: F)
+        where F: Fn() -> bool
+    {
         let mut offset: f32 = 0.0;
         let stdout = std::io::stdout();
         let mut handle = stdout.lock();
+        write!(handle, "{}", HIDE_CURSOR).unwrap();
 
-        loop {
+        while cond() {
             write!(handle, "{}{}", CLEAR_LINE, color_gradient_text(&content, offset)).expect("panik!");
             handle.flush().expect("panik2");
 
@@ -65,6 +67,8 @@ pub mod color {
 
             sleep(Duration::from_millis(50));
         }
+
+        write!(handle, "{}{}{}", CLEAR_LINE, RESET_COLOR, SHOW_CURSOR).unwrap();
     }
 
 }
