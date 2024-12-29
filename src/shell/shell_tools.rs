@@ -90,12 +90,11 @@ impl <'a> ShellLM<'a> {
 
 
     fn exec_bash_cmd(cmd: String) {
-
-        println!("{}", colorify(" Generated command:", 82., 80., 76.));
+        println!("{}", colorify("Generated command:", 150., 150., 150.));
         println!();
         println!("      {}", colorify(&cmd, 59., 235., 115.));
         println!();
-        println!("{}", colorify(" Cannot guarantee that the command is 'safe.'\n Verify the command if you're uncertain.", 82., 80., 76.));
+        println!("{}", colorify("Cannot guarantee that the command is 'safe.'\nVerify the command if you're uncertain.", 150., 150., 150.));
         print!("     [E]xecute [A]bort (default) ");
         std::io::stdout().flush().unwrap();
 
@@ -117,7 +116,7 @@ impl <'a> ShellLM<'a> {
                 eprintln!("Command could not execute successfully");
             }
         } else {
-            println!("{}", colorify("Aborting!", 247., 89., 89.))
+            println!("{}", colorify("Aborted", 247., 89., 89.))
         }
 
     }
@@ -136,6 +135,7 @@ impl <'a> ShellLM<'a> {
         if let Some(save_path) = save {
             self.instance.save_curr_session(Some(save_path)).expect("Could not save session!");
         }
+        println!("{}", colorify("🔮 Exiting", 129., 59., 235.))
     }
 
     fn loading_indicator(&self, model_status: Arc<Mutex<ModelStatus>>) {
@@ -150,13 +150,13 @@ impl <'a> ShellLM<'a> {
     }
 
     fn run_shell(&mut self) {
-        let shell_tag = colorify("shellm🔮", 129., 59., 235.);
+        let shell_tag = colorify("shellm 🔮", 129., 59., 235.);
         let tilda = colorify("~", 59., 150., 235.);
         loop {
             // Self::clear_stdin();
             let mut buffer = String::new();
             if self.query.len() != 2 {
-                print!(" {} {} ", shell_tag, tilda);
+                print!("{} {} ", shell_tag, tilda);
                 std::io::stdout().flush().unwrap(); // flush to stdout
                 std::io::stdin().read_line(&mut buffer).unwrap();
 
@@ -184,7 +184,17 @@ impl <'a> ShellLM<'a> {
         if self.shell_mode {
             self.run_shell();
         } else {
-            let result = self.run();
+
+            if self.query.len() < 2 {
+                eprintln!("{}", colorify("No query provided", 247., 89., 89.));
+                return;
+            }
+
+            let result = self.process_query();
+            match self.model_mode {
+                ModelMode::CMD => { Self::exec_bash_cmd(result) },
+                _ => {}
+            }
             // TODO check if the curr mode is CMD or what not you
         }
     }

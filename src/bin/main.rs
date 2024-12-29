@@ -1,10 +1,5 @@
-use std::sync::{Arc, Mutex};
-use std::thread;
-use std::thread::sleep;
-use std::time::Duration;
-use shell_rs::utils::color::{animate_text};
+use shell_rs::shell::shell_tools::{ModelMode, ShellLM};
 use shell_rs::utils::model_tool::{ChatRole, ChatWrapper, ModelContainer, ModelInstance};
-use shell_rs::shell::shell_tools::{ModelMode, ModelStatus, ShellLM};
 
 /*fn test_one() {
     let model = ModelContainer::new("/home/v18/Documents/Code/shell_rs2/qwen2.5-coder-7b-instruct-q4_k_m.gguf".to_string());
@@ -39,13 +34,14 @@ fn test_three() {
 }
 
 fn main() {
-    let container = ModelContainer::new("/home/v18/Documents/Code/shell_rs2/qwen2.5-coder-7b-instruct-q4_k_m.gguf");
+    // Some("find all files that contain the word 'hello' in them")
+    let container = ModelContainer::new("/home/v18/Documents/Code/qwen2.5-coder-7b-instruct-q3_k_m.gguf");
     let mut shellm = ShellLM::new(
-                                Some("find all files that contain the word 'hello' in them"),
+                                None,
                                 ModelMode::CMD,
                                 true,
                                 None,
-                                Some("session.bin".to_string()),
+                                None,
                                 None, &container, 10000).unwrap();
 
     shellm.run();
