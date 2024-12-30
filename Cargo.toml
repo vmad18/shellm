@@ -1,5 +1,5 @@
 [package]
-name = "shell_rs"
+name = "shellm"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,3 +7,4 @@ edition = "2021"
 llama-cpp-2 = "0.1.85"
 encoding_rs = "0.8.35"
 num_cpus = "1.16.0"
+clap = { version = "4.5.23", features = ["derive"] }

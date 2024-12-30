@@ -1,27 +1,29 @@
 use crate::utils::color::{animate_text, colorify};
 use crate::utils::model_tool::{ChatRole, ChatWrapper, ModelContainer, ModelInstance};
 use crate::utils::utils::get_sys_threads;
-use std::io::{Read, Write};
-use std::process::{exit, Command, Stdio};
+use std::error::Error;
+use std::io::Write;
+use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread::sleep;
 use std::time::Duration;
 use std::{env, fs, thread};
-use std::error::Error;
 
 pub enum ModelMode {
     CMD,
     CODE,
     MATH,
+    WRITING,
     GENERAL,
 }
 
 impl ModelMode {
     fn get_system_prompt(&self) -> &str {
         match *self {
-            ModelMode::CMD => "Provide only bash commands for linux without any description. If there is a lack of details, provide most logical solution. Ensure the output is a valid shell command. If multiple steps required try to combine them together using &&. Provide only plain text without Markdown formatting. MAKE SURE TO NOT provide markdown formatting such as ```. Certain user requests will provide the current working directory and the list of files in the working directory. Use this information to inform the creation of the bash commands ONLY if it's necessary. It will be formatted as WD: {} FILES: {}.",
+            ModelMode::CMD => "Provide only bash commands for an arch linux system without any description. If there is a lack of details, provide most logical solution. Ensure the output is a valid shell command. If multiple steps required try to combine them together using &&. Provide only plain text without Markdown formatting. MAKE SURE TO NOT provide markdown formatting such as ```. Certain user requests will provide the current working directory and the list of files in the working directory. Use this information to inform the creation of the bash commands ONLY if it's necessary. It will be formatted as WD: {} FILES: {}.",
             ModelMode::CODE => "",
             ModelMode::MATH => "",
+            ModelMode::WRITING => "",
             ModelMode::GENERAL => "",
         }
     }
@@ -43,7 +45,7 @@ pub struct Shellm<'a> {
 
 impl<'a> Shellm<'a> {
     pub fn new(
-        query: Option<&str>,
+        query: Option<String>,
         model_mode: ModelMode,
         shell_mode: bool,
         load_session: Option<String>,
@@ -52,7 +54,7 @@ impl<'a> Shellm<'a> {
         container: &'a ModelContainer,
         ctx_window: u32,
     ) -> Result<Self, ShellCreationError> {
-        let threads = Some((get_sys_threads() / 2) as i32);
+        let threads = Some((get_sys_threads() * 3 / 4) as i32);
         let instance = if let Some(load_path) = load_session {
             match ModelInstance::load_from_session(
                 container,
@@ -74,16 +76,11 @@ impl<'a> Shellm<'a> {
         let mut init_query = ChatWrapper::new();
         init_query.add_dialogue(ChatRole::System, model_mode.get_system_prompt());
 
-        if let Some(query) = query {
-            let mut query = query.to_string();
-
+        if let Some(mut query) = query {
             query = match model_mode {
                 ModelMode::CMD => Self::augment_query(query),
-                _ => query
+                _ => query,
             };
-
-            println!("{}", query);
-
             init_query.add_dialogue(ChatRole::User, &query);
         }
 
@@ -100,14 +97,11 @@ impl<'a> Shellm<'a> {
     fn print_shell_start_msg() {
         println!(
             "{}",
-            colorify(" ____  _  _  ____  __    __    _  _ ",
-                     129.,
-                     59.,
-                     235.)
+            colorify(" ____  _  _  ____  __    __    _  _ ", 129., 59., 235.)
         );
         println!(
             "{}",
-            colorify("/ ___)/ )( \\(  __)(  )  (  )  ( \\/ )",  201., 168., 255.)
+            colorify("/ ___)/ )( \\(  __)(  )  (  )  ( \\/ )", 201., 168., 255.)
         );
         println!(
             "{}",
@@ -120,7 +114,7 @@ impl<'a> Shellm<'a> {
         );
         println!(
             "{}",
-            colorify("(____/\\_)(_/(____)\\____/\\____/\\_)(_/",  201., 168., 255.)
+            colorify("(____/\\_)(_/(____)\\____/\\____/\\_)(_/", 201., 168., 255.)
         );
     }
 
@@ -165,7 +159,10 @@ impl<'a> Shellm<'a> {
 
             let status = child.wait().expect("Something went wrong!");
             if !status.success() {
-                eprintln!("Command could not execute successfully");
+                eprintln!(
+                    "{}",
+                    colorify("Command could not execute successfully", 247., 89., 89.)
+                );
             }
         } else {
             println!("{}", colorify("Aborted", 247., 89., 89.))
@@ -184,7 +181,8 @@ impl<'a> Shellm<'a> {
             let entry = entry_result?;
             let path = entry.path();
 
-            let name = path.file_name()
+            let name = path
+                .file_name()
                 .and_then(|n| n.to_str())
                 .ok_or("Invalid file name")?
                 .to_string();
@@ -206,7 +204,6 @@ impl<'a> Shellm<'a> {
         query.push_str(" FILES: ");
         query.push_str(&Self::get_files().unwrap());
         query
-
     }
 
     fn exit_shell(&self) {
@@ -216,7 +213,7 @@ impl<'a> Shellm<'a> {
                 .save_curr_session(Some(save_path))
                 .expect("Could not save session!");
         }
-        println!("{}", colorify("🔮 Exiting ✨", 201., 168., 255.))
+        println!("{}", colorify("🔮 Bye", 201., 168., 255.))
     }
 
     fn loading_indicator(&self, model_status: Arc<Mutex<ModelStatus>>) {
@@ -239,7 +236,6 @@ impl<'a> Shellm<'a> {
         let shell_tag = colorify("🔮", 129., 59., 235.);
         let tilda = colorify("~", 59., 150., 235.);
         loop {
-            // Self::clear_stdin();
             let mut buffer = String::new();
             if self.query.len() != 2 {
                 print!("{} {} ", shell_tag, tilda);
@@ -253,7 +249,7 @@ impl<'a> Shellm<'a> {
 
                 buffer = match self.model_mode {
                     ModelMode::CMD => Self::augment_query(buffer),
-                    _ => buffer
+                    _ => buffer,
                 };
 
                 self.query.add_dialogue(ChatRole::User, &buffer);
@@ -275,11 +271,11 @@ impl<'a> Shellm<'a> {
             Self::print_shell_start_msg();
             self.run_shell();
         } else {
+            // process a single query
             if self.query.len() < 2 {
                 eprintln!("{}", colorify("No query provided", 247., 89., 89.));
                 return;
             }
-
             let result = self.process_query();
             match self.model_mode {
                 ModelMode::CMD => Self::exec_bash_cmd(result),
