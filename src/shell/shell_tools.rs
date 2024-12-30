@@ -20,8 +20,22 @@ pub enum ModelMode {
 impl ModelMode {
     fn get_system_prompt(&self) -> &str {
         match *self {
-            ModelMode::CMD => "Provide only bash commands for an arch linux system without any description. If there is a lack of details, provide most logical solution. Ensure the output is a valid shell command. If multiple steps required try to combine them together using &&. Provide only plain text without Markdown formatting. MAKE SURE TO NOT provide markdown formatting such as ```. Certain user requests will provide the current working directory and the list of files in the working directory. Use this information to inform the creation of the bash commands ONLY if it's necessary. It will be formatted as WD: {} FILES: {}.",
-            ModelMode::CODE => "",
+            ModelMode::CMD => "You are a bash command generator assistant for a linux systems. Output only raw bash commands without any explanations, markdown formatting, code blocks, or backticks - each response should be immediately executable in a terminal. Chain multiple commands with && when steps need to be sequential, use ; for independent commands that can run in any order, and default to absolute paths unless working directory is specified. Prefer single-line solutions over multiple lines when possible, using proper command escaping and quoting when needed. When provided, context will appear as 'WD: {path} FILES: {file1, file2, ...}' - use this information only when relevant to command construction. For directory-wide operations, use '.' instead of iterating through files, and respect the current working directory when provided. When details are missing, choose the most common/logical default options, use sudo when operations require elevated privileges, prefer widely available core utilities over optional packages, and include necessary package installation commands if specialized tools are required. Include basic error checking in critical operations, use -e flag with shell commands when appropriate, and add safeguards for destructive operations. Example context format: WD: /home/user/documents FILES: report.pdf, notes.txt, images/",
+            ModelMode::CODE => "
+You are a highly intelligent and capable coding assistant. Your responses must contain only code, with no surrounding text, explanations, or formatting. Follow these rules strictly:
+1. Provide only working, executable code that directly solves the user's request
+2. Include helpful comments within the code to explain key functionality and important logic
+3. If no programming language is specified, use Python as the default language unless another language would clearly be more appropriate for the task (e.g., JavaScript for frontend web functionality, SQL for database queries)
+4. Do not add any text before or after the code
+5. Do not include markdown formatting or code block markers
+6. Do not ask follow-up questions or provide additional explanations
+7. Structure your code following best practices for readability and maintainability
+8. Include error handling where appropriate
+9. Use clear, descriptive variable names and consistent formatting
+10. If multiple files are needed, separate them with a single line containing the filename in comments
+11. Begin coding immediately when receiving a request, with no preamble
+12. End your response as soon as the code is complete, with no concluding remarks
+13. MAKE SURE TO NOT provide markdown formatting such as ```.",
             ModelMode::MATH => "",
             ModelMode::WRITING => "",
             ModelMode::GENERAL => "",
@@ -116,16 +130,17 @@ impl<'a> Shellm<'a> {
             "{}",
             colorify("(____/\\_)(_/(____)\\____/\\____/\\_)(_/", 201., 168., 255.)
         );
+        println!();
     }
 
-    pub fn process_query(&mut self) -> String {
+    fn process_query(&mut self) -> String {
         let model_status = ModelStatus(false);
         let state = Arc::new(Mutex::new(model_status));
         self.loading_indicator(Arc::clone(&state));
 
         let toks = self
             .instance
-            .chat_query(&self.query, 500, false, false)
+            .chat_query(&self.query, 50000, false, false, ||{})
             .unwrap();
         let result = self.instance.decode_tokens(toks, false);
 
@@ -135,12 +150,43 @@ impl<'a> Shellm<'a> {
         result
     }
 
+    fn stream_query(&mut self) -> () {
+        let model_status = ModelStatus(false);
+        let state = Arc::new(Mutex::new(model_status));
+        self.loading_indicator(Arc::clone(&state));
+
+        let toks = self
+            .instance
+            .chat_query(&self.query, 50000, true, true, move || { state.clone().lock().unwrap().0 = true; });
+
+/*        let result = self.instance.decode_tokens(toks, false);
+
+        result*/
+    }
+
     fn exec_bash_cmd(cmd: String) {
-        println!("{}", colorify("Generated command:", 150., 150., 150.));
-        println!();
-        println!("      {}", colorify(&cmd, 59., 235., 115.));
-        println!();
-        println!("{}", colorify("Cannot guarantee that the command is 'safe.'\nVerify the command if you're uncertain.", 150., 150., 150.));
+        let mut output = String::new();
+
+        output.push_str(&format!("{}\n", colorify("Generated command:", 150., 150., 150.)));
+        output.push_str("\n");
+        output.push_str(&format!("      {}\n", colorify(&cmd, 59., 235., 115.)));
+        output.push_str("\n");
+        output.push_str(&format!("{}", colorify("Cannot guarantee that the command is 'safe.'\nVerify the command if you're uncertain.\n", 150., 150., 150.)));
+
+        let split = output.split(" ");
+        let len = split.clone().count();
+        for (i, w) in split.enumerate() {
+            if i != len - 1 {
+                print!("{} ", w);
+            } else {
+                print!("{}", w);
+            }
+            std::io::stdout().flush().unwrap();
+            if !w.trim().is_empty() {
+                sleep(Duration::from_millis(125));
+            }
+        }
+
         print!("     [E]xecute [A]bort (default) ");
         std::io::stdout().flush().unwrap();
 
@@ -245,6 +291,8 @@ impl<'a> Shellm<'a> {
                 if buffer == "exit\n" {
                     self.exit_shell();
                     break;
+                } else if buffer.is_empty() || buffer.trim().is_empty() {
+                    continue;
                 }
 
                 buffer = match self.model_mode {
@@ -255,10 +303,15 @@ impl<'a> Shellm<'a> {
                 self.query.add_dialogue(ChatRole::User, &buffer);
             }
 
-            let result = self.process_query();
 
             match self.model_mode {
-                ModelMode::CMD => Self::exec_bash_cmd(result),
+                ModelMode::CMD => {
+                    let result = self.process_query();
+                    Self::exec_bash_cmd(result)
+                },
+                ModelMode::CODE =>  {
+                    self.stream_query();
+                },
                 _ => {}
             }
 
@@ -276,9 +329,15 @@ impl<'a> Shellm<'a> {
                 eprintln!("{}", colorify("No query provided", 247., 89., 89.));
                 return;
             }
-            let result = self.process_query();
+
             match self.model_mode {
-                ModelMode::CMD => Self::exec_bash_cmd(result),
+                ModelMode::CMD =>  {
+                    let result = self.process_query();
+                    Self::exec_bash_cmd(result)
+                },
+                ModelMode::CODE => {
+                    self.stream_query();
+                }
                 _ => {}
             }
             // TODO check if the curr mode is CMD or what not you

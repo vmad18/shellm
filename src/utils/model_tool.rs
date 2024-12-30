@@ -2,7 +2,8 @@ use std::io::Write;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::string::ToString;
-
+use std::thread::sleep;
+use std::time::Duration;
 use llama_cpp_2::context::LlamaContext;
 use llama_cpp_2::context::params::LlamaContextParams;
 use llama_cpp_2::llama_backend::LlamaBackend;
@@ -181,10 +182,10 @@ impl <'a>ModelInstance<'a> {
         chat.push(LlamaChatMessage::new("system".to_string(), content).unwrap());
 
         if output {
-            self.print_after_inference(self.create_chat_dialogue(chat), max_gen, yield_output);
+            self.print_after_inference(self.create_chat_dialogue(chat), max_gen, yield_output, ||{});
             None
         } else {
-            Some(self.inference(self.create_chat_dialogue(chat), max_gen, false))
+            Some(self.inference(self.create_chat_dialogue(chat), max_gen, false, ||{}))
         }
     }
 
@@ -193,30 +194,32 @@ impl <'a>ModelInstance<'a> {
         chat.push(LlamaChatMessage::new("user".to_string(), content).unwrap());
 
         if output {
-            self.print_after_inference(self.create_chat_dialogue(chat), max_gen, yield_output);
+            self.print_after_inference(self.create_chat_dialogue(chat), max_gen, yield_output, || {});
             None
         } else {
-            Some(self.inference(self.create_chat_dialogue(chat), max_gen, false))
+            Some(self.inference(self.create_chat_dialogue(chat), max_gen, false, ||{}))
         }
     }
 
-    pub fn chat_query(&mut self, chat: &ChatWrapper, max_gen: i32, output: bool, yield_output: bool) -> Option<Vec<LlamaToken>> {
+    pub fn chat_query<F>(&mut self, chat: &ChatWrapper, max_gen: i32, output: bool, yield_output: bool, do_after: F) -> Option<Vec<LlamaToken>>
+    where F: Fn() -> () {
         if output {
-            self.print_after_inference(chat.to_tokens(&self.ctx), max_gen, yield_output);
+            self.print_after_inference(chat.to_tokens(&self.ctx), max_gen, yield_output, do_after);
             None
         } else {
-            Some(self.inference(chat.to_tokens(&self.ctx), max_gen, false))
+            Some(self.inference(chat.to_tokens(&self.ctx), max_gen, false, do_after))
         }
     }
 
-    pub fn print_after_inference(&mut self, query: Vec<LlamaToken>, max_gen: i32, yield_output: bool) {
-        let result = self.inference(query, max_gen, yield_output);
+    pub fn print_after_inference<F>(&mut self, query: Vec<LlamaToken>, max_gen: i32, yield_output: bool, do_after: F) where F: Fn() -> () {
+        let result = self.inference(query, max_gen, yield_output, do_after);
         if !yield_output {
             println!("{}", self.decode_tokens(result, false));
         }
     }
 
-    pub fn inference(&mut self, query: Vec<LlamaToken>, max_gen: i32, output: bool) -> Vec<LlamaToken> {
+    pub fn inference<F>(&mut self, query: Vec<LlamaToken>, max_gen: i32, output: bool, do_on_start: F) -> Vec<LlamaToken>
+    where F: Fn() -> () {
         let mut result: Vec<LlamaToken> = vec![];
         self.stream_tokens(&query);
 
@@ -232,12 +235,14 @@ impl <'a>ModelInstance<'a> {
 
         self.ctx.decode(&mut batch).unwrap();
 
-        let mut n_cur = batch.n_tokens();
+        let mut n_curr = batch.n_tokens();
 
         let mut sampler = LlamaSampler::new(LlamaSamplerChainParams::default()).unwrap();
         sampler = LlamaSampler::add_greedy(sampler);
 
-        while n_cur <= max_gen {
+        let mut done_once = false;
+
+        while n_curr <= max_gen {
             let token = sampler.sample(&self.ctx, batch.n_tokens() - 1); // get next token
             sampler.accept(token); // not needed unless using different sampling method
             if self.ctx.model.is_eog_token(token) { break; }
@@ -245,15 +250,21 @@ impl <'a>ModelInstance<'a> {
             self.tokens.push(token);
 
             batch.clear(); // clear batch
-            batch.add(token, n_cur, &[0], true).unwrap(); // add generated token to batch
+            batch.add(token, n_curr, &[0], true).unwrap(); // add generated token to batch
 
             self.ctx.decode(&mut batch).unwrap();
 
             if output {
+                if !done_once {
+                    // println!("changing the status of this thing");
+                    do_on_start();
+                    sleep(Duration::from_millis(50));
+                    done_once = true;
+                }
                 self.decode_tokens(vec![token], true);
             }
 
-            n_cur += 1;
+            n_curr += 1;
         }
 
         // self.ctx.kv_cache_update();
