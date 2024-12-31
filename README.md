@@ -8,6 +8,11 @@ Integrates a locally ran llm to your terminal experience, written in Rust.
 
 # Examples
 
+# Dependencies
+* llama-cpp-2
+* encoding_rs
+* clap
+
 # TODO
 - [ ] Clean up code base
 - [ ] Offer the ability to change models
