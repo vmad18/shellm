@@ -17,3 +17,4 @@ Integrates a locally ran llm to your terminal experience, written in Rust.
 - [ ] Clean up code base
 - [ ] Offer the ability to change models
 - [ ] Package it up
+- [ ] Example video
