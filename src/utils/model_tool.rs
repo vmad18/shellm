@@ -100,8 +100,6 @@ impl <'a>ModelInstance<'a> {
                threads: Option<i32>,
                threads_batch: Option<i32>,
                ctx_window: u32) -> Self {
-
-
         let mut ctx_params =
             LlamaContextParams::default().with_n_ctx(Some(NonZeroU32::new(ctx_window).unwrap()));
 
@@ -177,15 +175,16 @@ impl <'a>ModelInstance<'a> {
 
         decoded
     }
+
     pub fn init_sys(&mut self, content: String, max_gen: i32, output: bool, yield_output: bool) -> Option<Vec<LlamaToken>> {
         let mut chat: Vec<LlamaChatMessage> = vec![];
         chat.push(LlamaChatMessage::new("system".to_string(), content).unwrap());
 
         if output {
-            self.print_after_inference(self.create_chat_dialogue(chat), max_gen, yield_output, ||{});
+            self.print_after_inference(self.create_chat_dialogue(chat), max_gen, yield_output, || {});
             None
         } else {
-            Some(self.inference(self.create_chat_dialogue(chat), max_gen, false, ||{}))
+            Some(self.inference(self.create_chat_dialogue(chat), max_gen, false, || {}))
         }
     }
 
@@ -197,15 +196,18 @@ impl <'a>ModelInstance<'a> {
             self.print_after_inference(self.create_chat_dialogue(chat), max_gen, yield_output, || {});
             None
         } else {
-            Some(self.inference(self.create_chat_dialogue(chat), max_gen, false, ||{}))
+            Some(self.inference(self.create_chat_dialogue(chat), max_gen, false, || {}))
         }
     }
 
     pub fn chat_query<F>(&mut self, chat: &ChatWrapper, max_gen: i32, output: bool, yield_output: bool, do_after: F) -> Option<Vec<LlamaToken>>
-    where F: Fn() -> () {
+    where
+        F: Fn() -> () {
         if output {
-            self.print_after_inference(chat.to_tokens(&self.ctx), max_gen, yield_output, do_after);
+            self.print_after_inference(chat.to_tokens(&self.ctx), max_gen, false, do_after);
             None
+        }  else if yield_output {
+            Some(self.inference(chat.to_tokens(&self.ctx), max_gen, true, do_after))
         } else {
             Some(self.inference(chat.to_tokens(&self.ctx), max_gen, false, do_after))
         }
@@ -256,7 +258,6 @@ impl <'a>ModelInstance<'a> {
 
             if output {
                 if !done_once {
-                    // println!("changing the status of this thing");
                     do_on_start();
                     sleep(Duration::from_millis(50));
                     done_once = true;
@@ -267,14 +268,10 @@ impl <'a>ModelInstance<'a> {
             n_curr += 1;
         }
 
-        // self.ctx.kv_cache_update();
-        // self.ctx.clear_kv_cache_seq(None, Some(200), None).unwrap();
-
         if output {
             println!();
         }
 
         result
     }
-
 }
