@@ -1,4 +1,4 @@
-# SheLLM 🔮 (W.I.P.)
+# SheLLM 🔮 (w.i.p.)
 Integrates a locally ran llm to your terminal experience, written in Rust.
 
 # Features
