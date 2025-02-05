@@ -1,10 +1,10 @@
-# SheLLM 🔮 (w.i.p.)
-Integrates a locally ran llm to your terminal experience, written in Rust.
+# shellm 🔮 (w.i.p.)
+integrates a locally run llm to your terminal experience, written in rust.
 
-# Features
-* Generate bash commands 
-* Generate code to help speed up development
-* Get help with math, writing, or anything general!
+# features
+* generate bash commands 
+* generate code to help speed up development
+* get help with math, writing, or anything general!
 
 # Examples
 
@@ -13,8 +13,6 @@ Integrates a locally ran llm to your terminal experience, written in Rust.
 * encoding_rs
 * clap
 
-# TODO
-- [ ] Clean up code base
-- [ ] Offer the ability to change models
-- [ ] Package it up
-- [ ] Example video
+# to-do
+- [ ] clean up code base
+- [ ] examples
